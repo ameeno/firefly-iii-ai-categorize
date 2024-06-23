@@ -23,7 +23,7 @@ export default class OpenAiService {
         description
       );
 
-      const response = await this.#openAi.createCompletion({
+      const response = await this.#openAi.createChatCompletion({
         model: this.#model,
         prompt,
       });
