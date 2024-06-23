@@ -4,7 +4,8 @@ This project allows you to automatically categorize your expenses in [Firefly II
 using OpenAI.
 
 ## Please fork me
-Unfortunately i am not able to invest more time into maintaining this project. 
+
+Unfortunately i am not able to invest more time into maintaining this project.
 
 Feel free to fork it and create a PR that adds a link to your fork in the README file.
 
@@ -71,7 +72,7 @@ Tip: Make sure to set budget limits to prevent suprises at the end of the month.
 Create a new file `docker-compose.yml` with this content (or add to existing docker-compose file):
 
 ```yaml
-version: '3.3'
+version: "3.3"
 
 services:
   categorizer:
@@ -156,3 +157,5 @@ If you have to run the application on a different port than the default port `30
 - `ENABLE_UI`: If the user interface should be enabled. (Default: `false`)
 - `FIREFLY_TAG`: The tag to assign to the processed transactions. (Default: `AI categorized`)
 - `PORT`: The port where the application listens. (Default: `3000`)
+
+# Trigger
