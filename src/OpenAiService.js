@@ -61,15 +61,17 @@ export default class OpenAiService {
   }
 
   #generateMessages(categories, destinationName, description) {
-    const prompt = `Given i want to categorize transactions on my bank account into this categories:
-    
-    ${categories.join(", ")}
-
-In which category would a transaction from "${destinationName}" with the subject "${description}" fall into?
+    const prompt = `
+I want to categorize transactions on my bank account.
 Just output the name of the category.
 Does not have to be a complete sentence.
 Ignore any long string of numbers or special characters.
-The subject is in Mexican Spanish.`;
+The subject is in Mexican Spanish.
+In which category would a transaction from "${destinationName}" with the subject "${description}" fall into?
+The categories are: 
+
+${categories.join(", ")}
+`;
 
     return [
       { role: "system", content: "You are a helpful assistant." },
