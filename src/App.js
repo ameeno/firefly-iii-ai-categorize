@@ -124,11 +124,11 @@ export default class App {
       );
     }
 
-    if (req.body.content.transactions[0].category_id !== null) {
-      throw new WebhookException(
-        "content.transactions[0].category_id is already set. Transaction will be ignored."
-      );
-    }
+    // if (req.body.content.transactions[0].category_id !== null) {
+    //   throw new WebhookException(
+    //     "content.transactions[0].category_id is already set. Transaction will be ignored."
+    //   );
+    // }
 
     if (!req.body.content.transactions[0].description) {
       throw new WebhookException("Missing content.transactions[0].description");
