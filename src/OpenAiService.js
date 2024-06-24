@@ -3,8 +3,7 @@ import { getConfigVariable } from "./util.js";
 
 export default class OpenAiService {
   #openAi;
-  // #model = "gpt-4o-2024-05-13";
-  #model = "gpt-3.5-turbo-instruct";
+  #model = "gpt-3.5-turbo-instruct"; // Using the instruct model
 
   constructor() {
     const apiKey = getConfigVariable("OPENAI_API_KEY");
@@ -16,33 +15,35 @@ export default class OpenAiService {
     this.#openAi = new OpenAIApi(configuration);
   }
 
-  async classify(categories, destinationName, description) {
+  async classify(categories, destinationName, description, type) {
     try {
-      const messages = this.#generateMessages(
+      const prompt = this.#generatePrompt(
         categories,
         destinationName,
-        description
+        description,
+        type
       );
 
-      const response = await this.#openAi.createChatCompletion({
+      const response = await this.#openAi.createCompletion({
         model: this.#model,
-        messages,
+        prompt,
+        max_tokens: 10,
       });
 
-      let guess = response.data.choices[0].message.content;
+      let guess = response.data.choices[0].text;
       guess = guess.replace("\n", "");
       guess = guess.trim();
 
       if (categories.indexOf(guess) === -1) {
         console.warn(`OpenAI could not classify the transaction. 
-                Prompt: ${messages[1].content}
+                Prompt: ${prompt}
                 OpenAIs guess: ${guess}`);
         return null;
       }
 
       return {
-        prompt: messages[1].content,
-        response: response.data.choices[0].message.content,
+        prompt,
+        response: response.data.choices[0].text,
         category: guess,
       };
     } catch (error) {
@@ -61,23 +62,18 @@ export default class OpenAiService {
     }
   }
 
-  #generateMessages(categories, destinationName, description) {
-    const prompt = `
+  #generatePrompt(categories, destinationName, description, type) {
+    return `
 I want to categorize transactions on my bank account.
 Just output the name of the category.
 Does not have to be a complete sentence.
 Ignore any long string of numbers or special characters.
 The subject is in Mexican Spanish.
-In which category would a transaction from "${destinationName}" with the subject "${description}" fall into?
+In which category would a transaction (${type}) from "${destinationName}" with the subject "${description}" fall into?
 The categories are: 
 
 ${categories.join(", ")}
 `;
-
-    return [
-      { role: "system", content: "You are a helpful assistant." },
-      { role: "user", content: prompt },
-    ];
   }
 }
 

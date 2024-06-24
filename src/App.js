@@ -142,6 +142,7 @@ export default class App {
 
     const destinationName = req.body.content.transactions[0].destination_name;
     const description = req.body.content.transactions[0].description;
+    const type = req.body.content.transactions[0].type;
 
     const job = this.#jobList.createJob({
       destinationName,
@@ -156,7 +157,8 @@ export default class App {
       const { category, prompt, response } = await this.#openAi.classify(
         Array.from(categories.keys()),
         destinationName,
-        description
+        description,
+        type
       );
 
       const newData = Object.assign({}, job.data);
