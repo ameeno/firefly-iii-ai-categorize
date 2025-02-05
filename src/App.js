@@ -1,8 +1,8 @@
 import express from "express";
-import {getConfigVariable} from "./util.js";
+import { getConfigVariable } from "./util.js";
 import FireflyService from "./FireflyService.js";
 import OpenAiService from "./OpenAiService.js";
-import {Server} from "socket.io";
+import { Server } from "socket.io";
 import * as http from "http";
 import Queue from "queue";
 import JobList from "./JobList.js";
@@ -21,7 +21,6 @@ export default class App {
     #queue;
     #jobList;
 
-
     constructor() {
         this.#PORT = getConfigVariable("PORT", '3000');
         this.#ENABLE_UI = getConfigVariable("ENABLE_UI", 'false') === 'true';
@@ -37,14 +36,14 @@ export default class App {
             autostart: true
         });
 
-        this.#queue.addEventListener('start', job => console.log('Job started', job))
-        this.#queue.addEventListener('success', event => console.log('Job success', event.job))
-        this.#queue.addEventListener('error', event => console.error('Job error', event.job, event.err, event))
-        this.#queue.addEventListener('timeout', event => console.log('Job timeout', event.job))
+        this.#queue.addEventListener('start', job => console.log('Job started', job));
+        this.#queue.addEventListener('success', event => console.log('Job success', event.job));
+        this.#queue.addEventListener('error', event => console.error('Job error', event.job, event.err, event));
+        this.#queue.addEventListener('timeout', event => console.log('Job timeout', event.job));
 
         this.#express = express();
-        this.#server = http.createServer(this.#express)
-        this.#io = new Server(this.#server)
+        this.#server = http.createServer(this.#express);
+        this.#io = new Server(this.#server);
 
         this.#jobList = new JobList();
         this.#jobList.on('job created', data => this.#io.emit('job created', data));
@@ -53,19 +52,19 @@ export default class App {
         this.#express.use(express.json());
 
         if (this.#ENABLE_UI) {
-            this.#express.use('/', express.static('public'))
+            this.#express.use('/', express.static('public'));
         }
 
-        this.#express.post('/webhook', this.#onWebhook.bind(this))
+        this.#express.post('/webhook', this.#onWebhook.bind(this));
 
-        this.#server.listen(this.#PORT, async () => {
+        this.#server.listen(this.#PORT, () => {
             console.log(`Application running on port ${this.#PORT}`);
         });
 
         this.#io.on('connection', socket => {
             console.log('connected');
             socket.emit('jobs', Array.from(this.#jobList.getJobs().values()));
-        })
+        });
     }
 
     #onWebhook(req, res) {
@@ -74,20 +73,40 @@ export default class App {
             this.#handleWebhook(req, res);
             res.send("Queued");
         } catch (e) {
-            console.error(e)
+            console.error(e);
             res.status(400).send(e.message);
         }
     }
 
     #handleWebhook(req, res) {
-        // TODO: validate auth
+        // Define the list of regex patterns to remove
+        const exactSubstringsToRemove = [
+            /PAGAMENTO POS\b/i, // Exact match for 'PAGAMENTO POS'
+            /CRV\*/i, // Exact match for 'CRV*'
+            /VILNIUS IRL.*$/i, // Remove 'VILNIUS IRL' and everything following it
+            /DUBLIN IRL.*$/i, // Remove 'DUBLIN IRL' and everything following it
+            /OPERAZIONE.*$/i // Remove 'OPERAZIONE' and everything following it
+        ];
 
-        if (req.body?.trigger !== "STORE_TRANSACTION") {
-            throw new WebhookException("trigger is not STORE_TRANSACTION. Request will not be processed");
+        // Helper function to remove specific substrings using regex patterns
+        function removeSubstrings(description, regexPatterns) {
+            let result = description;
+
+            // Apply each regex pattern to remove substrings
+            regexPatterns.forEach(pattern => {
+                result = result.replace(pattern, '');
+            });
+
+            return result.trim(); // Trim any extra spaces from the result
+        }
+
+        // Validate request
+        if (req.body?.trigger !== "UPDATE_TRANSACTION") {
+            throw new WebhookException("trigger is not UPDATE_TRANSACTION. Request will not be processed");
         }
 
         if (req.body?.response !== "TRANSACTIONS") {
-            throw new WebhookException("trigger is not TRANSACTION. Request will not be processed");
+            throw new WebhookException("response is not TRANSACTIONS. Request will not be processed");
         }
 
         if (!req.body?.content?.id) {
@@ -98,8 +117,8 @@ export default class App {
             throw new WebhookException("No transactions are available in content.transactions");
         }
 
-        if (req.body.content.transactions[0].type !== "withdrawal") {
-            throw new WebhookException("content.transactions[0].type has to be 'withdrawal'. Transaction will be ignored.");
+        if (!["withdrawal", "deposit"].includes(req.body.content.transactions[0].type)) {
+            throw new WebhookException("content.transactions[0].type must be 'withdrawal' or 'deposit'. Transaction will be ignored.");
         }
 
         if (req.body.content.transactions[0].category_id !== null) {
@@ -115,11 +134,14 @@ export default class App {
         }
 
         const destinationName = req.body.content.transactions[0].destination_name;
-        const description = req.body.content.transactions[0].description
+        const description = req.body.content.transactions[0].description;
+
+        // Remove specific substrings from the description
+        const cleanedDescription = removeSubstrings(description, exactSubstringsToRemove);
 
         const job = this.#jobList.createJob({
             destinationName,
-            description
+            description: cleanedDescription
         });
 
         this.#queue.push(async () => {
@@ -127,12 +149,14 @@ export default class App {
 
             const categories = await this.#firefly.getCategories();
 
-            const {category, prompt, response} = await this.#openAi.classify(Array.from(categories.keys()), destinationName, description)
+            const { category, prompt, response } = await this.#openAi.classify(Array.from(categories.keys()), destinationName, cleanedDescription);
 
-            const newData = Object.assign({}, job.data);
-            newData.category = category;
-            newData.prompt = prompt;
-            newData.response = response;
+            const newData = {
+                ...job.data,
+                category,
+                prompt,
+                response
+            };
 
             this.#jobList.updateJobData(job.id, newData);
 
@@ -146,7 +170,6 @@ export default class App {
 }
 
 class WebhookException extends Error {
-
     constructor(message) {
         super(message);
     }

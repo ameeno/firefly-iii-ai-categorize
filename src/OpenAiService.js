@@ -1,43 +1,50 @@
-import {Configuration, OpenAIApi} from "openai";
-import {getConfigVariable} from "./util.js";
+import axios from 'axios';
+import { getConfigVariable } from './util.js';
 
 export default class OpenAiService {
-    #openAi;
-    #model = "gpt-3.5-turbo-instruct";
+    #axiosInstance;
+    #model = 'gpt-3.5-turbo'; // Modify the model name if needed
 
     constructor() {
-        const apiKey = getConfigVariable("OPENAI_API_KEY")
+        const apiKey = getConfigVariable('OPENAI_API_KEY');
+        const baseURL = getConfigVariable('OPENAI_BASE_URL');
 
-        const configuration = new Configuration({
-            apiKey
+        if (!apiKey) {
+            throw new Error('API key is not defined in the configuration.');
+        }
+
+        this.#axiosInstance = axios.create({
+            baseURL: baseURL, // Set the custom base URL
+            headers: {
+                'Authorization': `Bearer ${apiKey}`,
+                'Content-Type': 'application/json'
+            }
         });
-
-        this.#openAi = new OpenAIApi(configuration)
     }
 
     async classify(categories, destinationName, description) {
         try {
             const prompt = this.#generatePrompt(categories, destinationName, description);
 
-            const response = await this.#openAi.createCompletion({
+            const response = await this.#axiosInstance.post('/chat/completions', {
                 model: this.#model,
-                prompt
+                messages: [{ role: 'user', content: prompt }]
             });
 
-            let guess = response.data.choices[0].text;
-            guess = guess.replace("\n", "");
-            guess = guess.trim();
+            // Handle and clean up the response to remove any formatting
+            let guess = response.data.choices[0]?.message?.content || '';
+            guess = guess.replace(/[*_`~]/g, ''); // Remove Markdown formatting characters
+            guess = guess.replace(/\n/g, '');     // Remove newlines
+            guess = guess.trim();                // Trim leading and trailing spaces
 
-            if (categories.indexOf(guess) === -1) {
-                console.warn(`OpenAI could not classify the transaction. 
-                Prompt: ${prompt}
-                OpenAIs guess: ${guess}`)
+            if (!categories.includes(guess)) {
+                console.warn(`OpenAI could not classify the transaction.\nPrompt: ${prompt}\nOpenAI's guess: ${guess}`);
                 return null;
             }
 
             return {
                 prompt,
-                response: response.data.choices[0].text,
+                response: guess,
                 category: guess
             };
 
@@ -45,7 +52,7 @@ export default class OpenAiService {
             if (error.response) {
                 console.error(error.response.status);
                 console.error(error.response.data);
-                throw new OpenAiException(error.status, error.response, error.response.data);
+                throw new OpenAiException(error.response.status, error.response, error.response.data);
             } else {
                 console.error(error.message);
                 throw new OpenAiException(null, null, error.message);
@@ -54,22 +61,19 @@ export default class OpenAiService {
     }
 
     #generatePrompt(categories, destinationName, description) {
-        return `Given i want to categorize transactions on my bank account into this categories: ${categories.join(", ")}
-In which category would a transaction from "${destinationName}" with the subject "${description}" fall into?
-Just output the name of the category. Does not have to be a complete sentence.`;
+        return `Sei un esperto di transazioni bancarie e hai a disposizione tutta la conoscenza di internet. Voglio categorizzare le transazioni sul mio conto bancario in queste categorie: ${categories.join('; ')}. In quale categoria rientrerebbe una transazione verso il conto "${destinationName}" con la descrizione "${description}"? Rispondi solo con il nome di una delle categorie indicate, eliminando ogni altra parola superflua dalla risposta. Se nessuna delle categorie sembra adatta, rispondi con "Non posso classificare la transazione".`;
     }
 }
 
 class OpenAiException extends Error {
-    code;
-    response;
-    body;
+    #code;
+    #response;
+    #body;
 
     constructor(statusCode, response, body) {
         super(`Error while communicating with OpenAI: ${statusCode} - ${body}`);
-
-        this.code = statusCode;
-        this.response = response;
-        this.body = body;
+        this.#code = statusCode;
+        this.#response = response;
+        this.#body = body;
     }
 }
