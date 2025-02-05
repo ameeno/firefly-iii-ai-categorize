@@ -65,13 +65,52 @@ export default class FireflyService {
             },
             body: JSON.stringify(body)
         });
-
+        
         if (!response.ok) {
             throw new FireflyException(response.status, response, await response.text())
         }
 
         await response.json();
         console.info("Transaction updated")
+    }
+
+    async setDate(transactionId, transactions, date) {
+        if(date) {
+            const body = {
+                apply_rules: true,
+                fire_webhooks: true,
+                transactions: [],
+            }
+
+            transactions.forEach(transaction => {
+                let tags = transaction.tags;
+                if (!tags) {
+                    tags = [];
+                }
+
+                body.transactions.push({
+                    transaction_journal_id: transaction.transaction_journal_id,
+                    date: date,
+                    tags: tags,
+                });
+            })
+
+            const response = await fetch(`${this.#BASE_URL}/api/v1/transactions/${transactionId}`, {
+                method: "PUT",
+                headers: {
+                    Authorization: `Bearer ${this.#PERSONAL_TOKEN}`,
+                    "Content-Type": "application/json",
+                },
+                body: JSON.stringify(body)
+            });
+            
+            if (!response.ok) {
+                throw new FireflyException(response.status, response, await response.text())
+            }
+
+            await response.json();
+            console.info("Transaction updated")
+        }
     }
 }
 
