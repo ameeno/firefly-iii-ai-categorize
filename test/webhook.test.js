@@ -52,7 +52,9 @@ describe('Webhook Tests', () => {
         });
 
         // Expose private method for testing
-        app.handleWebhook = app.constructor.prototype['#handleWebhook'].bind(app);
+        app.handleWebhook = async (req, res) => {
+            return app['#handleWebhook'](req, res);
+        };
     });
 
     it('should process webhook request successfully', async () => {
