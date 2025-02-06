@@ -1,10 +1,8 @@
 import DatabaseService from "./DatabaseService.js";
-import DeepSeekService from "./DeepSeekService.js";
-import OpenAiService from "./OpenAiService.js";
 import { getConfigVariable } from "./util.js";
 
 export default class AIService {
-        #dbService;
+    #dbService;
 
     constructor() {
         this.#dbService = new DatabaseService();
@@ -43,7 +41,9 @@ export default class AIService {
             };
 
         } catch (error) {
-            this.handleError(error);
+            // Let the provider-specific error handler process the error and throw it
+            const handledError = this.handleError(error);
+            throw handledError || error;
         }
     }
 
@@ -76,14 +76,18 @@ Category:`;
         throw new Error('handleError must be implemented by provider-specific class');
     }
 
-    static create() {
+    static async create() {
         const provider = getConfigVariable("AI_PROVIDER", "deepseek").toLowerCase();
 
         switch (provider) {
-            case "openai":
+            case "openai": {
+                const { default: OpenAiService } = await import("./OpenAiService.js");
                 return new OpenAiService();
-            case "deepseek":
+            }
+            case "deepseek": {
+                const { default: DeepSeekService } = await import("./DeepSeekService.js");
                 return new DeepSeekService();
+            }
             default:
                 throw new Error(`Unknown AI provider: ${provider}. Supported providers are: openai, deepseek`);
         }

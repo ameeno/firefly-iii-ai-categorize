@@ -12,8 +12,7 @@ export default class DeepSeekService extends AIService {
 
     async makeAIRequest(prompt, categories) {
         const response = await fetch("https://api.deepseek.com/v1/chat/completions", {
-            method: "POST",
-            headers: {
+            method: "POST",            headers: {
                 "Content-Type": "application/json",
                 "Authorization": `Bearer ${this.#apiKey}`
             },
@@ -58,10 +57,10 @@ export default class DeepSeekService extends AIService {
 
     handleError(error) {
         if (error instanceof DeepSeekException) {
-            throw error;
+            return error;
         }
         console.error(error.message);
-        throw new DeepSeekException(null, error.message);
+        return new DeepSeekException(null, error.message);
     }
 }
 

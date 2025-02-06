@@ -21,8 +21,15 @@ describe('Webhook Tests', () => {
         };
 
         app = new App();
-        app.firefly = mockFireflyService;
-        app.aiService = mockAIService;
+        // Use Object.defineProperty to set private fields
+        Object.defineProperty(app, '#firefly', {
+            value: mockFireflyService,
+            writable: true
+        });
+        Object.defineProperty(app, '#aiService', {
+            value: mockAIService,
+            writable: true
+        });
     });
 
     it('should process webhook request successfully', async () => {
@@ -47,7 +54,9 @@ describe('Webhook Tests', () => {
             status: jest.fn().mockReturnThis()
         };
 
-        await app.handleWebhook(req, res);
+        // Access the private method using Object.getOwnPropertyDescriptor
+        const handleWebhook = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(app), '#handleWebhook').value;
+        await handleWebhook.call(app, req, res);
 
         expect(mockFireflyService.getCategories).toHaveBeenCalled();
         expect(mockAIService.classify).toHaveBeenCalledWith(

@@ -96,71 +96,92 @@ export default class App {
         }
     }
 
-    #handleWebhook(req, res) {
-        // TODO: validate auth
-
-        if (req.body?.trigger !== "STORE_TRANSACTION") {
-            throw new WebhookException("trigger is not STORE_TRANSACTION. Request will not be processed");
-        }
-
-        if (req.body?.response !== "TRANSACTIONS") {
-            throw new WebhookException("trigger is not TRANSACTION. Request will not be processed");
-        }
-
-        if (!req.body?.content?.id) {
-            throw new WebhookException("Missing content.id");
-        }
-
-        if (req.body?.content?.transactions?.length === 0) {
-            throw new WebhookException("No transactions are available in content.transactions");
-        }
-
-        if (req.body.content.transactions[0].type !== "withdrawal") {
-            throw new WebhookException("content.transactions[0].type has to be 'withdrawal'. Transaction will be ignored.");
-        }
-
-        if (req.body.content.transactions[0].category_id !== null) {
-            throw new WebhookException("content.transactions[0].category_id is already set. Transaction will be ignored.");
-        }
-
-        if (!req.body.content.transactions[0].description) {
-            throw new WebhookException("Missing content.transactions[0].description");
-        }
-
-        if (!req.body.content.transactions[0].destination_name) {
-            throw new WebhookException("Missing content.transactions[0].destination_name");
-        }
-
-        const destinationName = req.body.content.transactions[0].destination_name;
-        const description = req.body.content.transactions[0].description
-
-        const job = this.#jobList.createJob({
-            destinationName,
-            description
-        });
-
-        this.#queue.push(async () => {
-            this.#jobList.setJobInProgress(job.id);
-
-            const categories = await this.#firefly.getCategories();
-
-            const {category, prompt, response} = await this.#aiService.classify(Array.from(categories.keys()), destinationName, description)
-
-            const newData = Object.assign({}, job.data);
-            newData.category = category;
-            newData.prompt = prompt;
-            newData.response = response;
-
-            this.#jobList.updateJobData(job.id, newData);
-
-            if (category) {
-                await this.#firefly.setCategory(req.body.content.id, req.body.content.transactions, categories.get(category));
+    async #handleWebhook(req, res) {
+        try {
+            if (req.body?.trigger !== "STORE_TRANSACTION") {
+                throw new WebhookException("trigger is not STORE_TRANSACTION. Request will not be processed");
             }
 
-            this.#jobList.setJobFinished(job.id);
-        });
+            if (req.body?.response !== "TRANSACTIONS") {
+                throw new WebhookException("trigger is not TRANSACTION. Request will not be processed");
+            }
+
+            if (!req.body?.content?.id) {
+                throw new WebhookException("Missing content.id");
+            }
+
+            if (!req.body?.content?.transactions?.length) {
+                throw new WebhookException("No transactions are available in content.transactions");
+            }
+
+            const transaction = req.body.content.transactions[0];
+
+            if (transaction.type !== "withdrawal") {
+                throw new WebhookException("content.transactions[0].type has to be 'withdrawal'. Transaction will be ignored.");
+            }
+
+            if (transaction.category_id !== null) {
+                throw new WebhookException("content.transactions[0].category_id is already set. Transaction will be ignored.");
+            }
+
+            if (!transaction.description) {
+                throw new WebhookException("Missing content.transactions[0].description");
+            }
+
+            if (!transaction.destination_name) {
+                throw new WebhookException("Missing content.transactions[0].destination_name");
+            }
+
+            const job = this.#jobList.createJob({
+                destinationName: transaction.destination_name,
+                description: transaction.description
+            });
+
+            this.#queue.push(async () => {
+                try {
+                    this.#jobList.setJobInProgress(job.id);
+
+                    const categories = await this.#firefly.getCategories();
+                    const {category, prompt, response} = await this.#aiService.classify(
+                        Array.from(categories.keys()),
+                        transaction.destination_name,
+                        transaction.description
+                    );
+
+                    const newData = Object.assign({}, job.data);
+                    newData.category = category;
+                    newData.prompt = prompt;
+                    newData.response = response;
+
+                    this.#jobList.updateJobData(job.id, newData);
+
+                    if (category && categories.has(category)) {
+                        await this.#firefly.setCategory(
+                            req.body.content.id,
+                            req.body.content.transactions,
+                            categories.get(category)
+                        );
+                    }
+
+                    this.#jobList.setJobFinished(job.id);
+                } catch (error) {
+                    console.error('Job processing error:', error);
+                    this.#jobList.setJobFinished(job.id, error);
+                    throw error;
+                }
+            });
+
+            res.status(200).send('Webhook queued successfully');
+        } catch (error) {
+            if (error instanceof WebhookException) {
+                res.status(400).send(error.message);
+            } else {
+                console.error('Webhook processing error:', error);
+                res.status(500).send('Internal server error');
+            }
+        }
     }
-}
+    }
 
 class WebhookException extends Error {
 
