@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it, jest } from '@jest/globals';
 import AIService from '../src/AIService.js';
-import DeepSeekService from '../src/DeepSeekService.js';
-import OpenAiService from '../src/OpenAiService.js';
 
 // Mock environment variables
 process.env.DEEPSEEK_API_KEY = 'mock-deepseek-key';
@@ -12,20 +10,24 @@ jest.unstable_mockModule('../src/util.js', () => ({
     getConfigVariable: mockGetConfigVariable
 }));
 
+const mockOpenAiService = jest.fn().mockImplementation(() => ({
+    makeAIRequest: jest.fn(),
+    getProviderName: jest.fn().mockReturnValue('openai'),
+    handleError: jest.fn()
+}));
+
+const mockDeepSeekService = jest.fn().mockImplementation(() => ({
+    makeAIRequest: jest.fn(),
+    getProviderName: jest.fn().mockReturnValue('deepseek'),
+    handleError: jest.fn()
+}));
+
 jest.unstable_mockModule('../src/OpenAiService.js', () => ({
-    default: jest.fn().mockImplementation(() => ({
-        makeAIRequest: jest.fn(),
-        getProviderName: jest.fn().mockReturnValue('openai'),
-        handleError: jest.fn()
-    }))
+    default: mockOpenAiService
 }));
 
 jest.unstable_mockModule('../src/DeepSeekService.js', () => ({
-    default: jest.fn().mockImplementation(() => ({
-        makeAIRequest: jest.fn(),
-        getProviderName: jest.fn().mockReturnValue('deepseek'),
-        handleError: jest.fn()
-    }))
+    default: mockDeepSeekService
 }));
 
 describe('AIService Tests', () => {
@@ -39,19 +41,22 @@ describe('AIService Tests', () => {
     it('should create OpenAI service when configured', async () => {
         mockGetConfigVariable.mockReturnValue('openai');
         const service = await AIService.create();
-        expect(service).toBeInstanceOf(OpenAiService);
+        expect(mockOpenAiService).toHaveBeenCalled();
+        expect(service.getProviderName()).toBe('openai');
     });
 
     it('should create DeepSeek service when configured', async () => {
         mockGetConfigVariable.mockReturnValue('deepseek');
         const service = await AIService.create();
-        expect(service).toBeInstanceOf(DeepSeekService);
+        expect(mockDeepSeekService).toHaveBeenCalled();
+        expect(service.getProviderName()).toBe('deepseek');
     });
 
     it('should create DeepSeek service by default', async () => {
         mockGetConfigVariable.mockReturnValue('deepseek');
         const service = await AIService.create();
-        expect(service).toBeInstanceOf(DeepSeekService);
+        expect(mockDeepSeekService).toHaveBeenCalled();
+        expect(service.getProviderName()).toBe('deepseek');
     });
 
     it('should throw error for unknown provider', async () => {
