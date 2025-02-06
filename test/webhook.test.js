@@ -5,6 +5,8 @@ describe('Webhook Tests', () => {
     let app;
     let mockFireflyService;
     let mockAIService;
+    let mockJobList;
+    let mockQueue;
 
     beforeEach(() => {
         mockFireflyService = {
@@ -20,8 +22,18 @@ describe('Webhook Tests', () => {
             })
         };
 
+        mockJobList = {
+            createJob: jest.fn().mockReturnValue({ id: '1', data: {} }),
+            setJobInProgress: jest.fn(),
+            updateJobData: jest.fn(),
+            setJobFinished: jest.fn()
+        };
+
+        mockQueue = {
+            push: jest.fn().mockImplementation(fn => fn())
+        };
+
         app = new App();
-        // Use Object.defineProperty to set private fields
         Object.defineProperty(app, '#firefly', {
             value: mockFireflyService,
             writable: true
@@ -30,6 +42,17 @@ describe('Webhook Tests', () => {
             value: mockAIService,
             writable: true
         });
+        Object.defineProperty(app, '#jobList', {
+            value: mockJobList,
+            writable: true
+        });
+        Object.defineProperty(app, '#queue', {
+            value: mockQueue,
+            writable: true
+        });
+
+        // Expose private method for testing
+        app.handleWebhook = app.constructor.prototype['#handleWebhook'].bind(app);
     });
 
     it('should process webhook request successfully', async () => {
@@ -54,9 +77,7 @@ describe('Webhook Tests', () => {
             status: jest.fn().mockReturnThis()
         };
 
-        // Access the private method using Object.getOwnPropertyDescriptor
-        const handleWebhook = Object.getOwnPropertyDescriptor(Object.getPrototypeOf(app), '#handleWebhook').value;
-        await handleWebhook.call(app, req, res);
+        await app.handleWebhook(req, res);
 
         expect(mockFireflyService.getCategories).toHaveBeenCalled();
         expect(mockAIService.classify).toHaveBeenCalledWith(
@@ -65,5 +86,7 @@ describe('Webhook Tests', () => {
             'Grocery shopping'
         );
         expect(mockFireflyService.setCategory).toHaveBeenCalledWith('123', req.body.content.transactions, '1');
+        expect(mockJobList.createJob).toHaveBeenCalled();
+        expect(mockJobList.setJobFinished).toHaveBeenCalled();
     });
 });
