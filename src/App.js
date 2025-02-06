@@ -1,18 +1,19 @@
 import express from "express";
-import {getConfigVariable} from "./util.js";
-import FireflyService from "./FireflyService.js";
-import OpenAiService from "./OpenAiService.js";
-import {Server} from "socket.io";
+import rateLimit from "express-rate-limit";
 import * as http from "http";
 import Queue from "queue";
+import { Server } from "socket.io";
+import AIService from "./AIService.js";
+import FireflyService from "./FireflyService.js";
 import JobList from "./JobList.js";
+import { getConfigVariable } from "./util.js";
 
 export default class App {
     #PORT;
     #ENABLE_UI;
 
     #firefly;
-    #openAi;
+    #aiService;
 
     #server;
     #io;
@@ -29,7 +30,7 @@ export default class App {
 
     async run() {
         this.#firefly = new FireflyService();
-        this.#openAi = new OpenAiService();
+        this.#aiService = AIService.create();
 
         this.#queue = new Queue({
             timeout: 30 * 1000,
@@ -50,7 +51,23 @@ export default class App {
         this.#jobList.on('job created', data => this.#io.emit('job created', data));
         this.#jobList.on('job updated', data => this.#io.emit('job updated', data));
 
+        // Rate limiting middleware
+        const limiter = rateLimit({
+            windowMs: 15 * 60 * 1000, // 15 minutes
+            max: 100 // limit each IP to 100 requests per windowMs
+        });
+
         this.#express.use(express.json());
+        this.#express.use('/webhook', limiter);
+
+        // Health check endpoint for container monitoring
+        this.#express.get('/health', (req, res) => {
+            res.status(200).json({
+                status: 'healthy',
+                timestamp: new Date().toISOString(),
+                uptime: process.uptime()
+            });
+        });
 
         if (this.#ENABLE_UI) {
             this.#express.use('/', express.static('public'))
@@ -127,7 +144,7 @@ export default class App {
 
             const categories = await this.#firefly.getCategories();
 
-            const {category, prompt, response} = await this.#openAi.classify(Array.from(categories.keys()), destinationName, description)
+            const {category, prompt, response} = await this.#aiService.classify(Array.from(categories.keys()), destinationName, description)
 
             const newData = Object.assign({}, job.data);
             newData.category = category;

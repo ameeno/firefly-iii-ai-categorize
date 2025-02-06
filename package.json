@@ -1,12 +1,14 @@
 {
   "name": "firefly-iii-ai-categorize",
   "version": "1.0.0",
-  "description": "",
+  "description": "AI-powered transaction categorization for Firefly III with machine learning and historical data analysis",
   "type": "module",
   "main": "index.js",
   "scripts": {
     "start": "node index.js",
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "node --experimental-vm-modules node_modules/jest/bin/jest.js",
+    "test:watch": "node --experimental-vm-modules node_modules/jest/bin/jest.js --watch",
+    "test:coverage": "node --experimental-vm-modules node_modules/jest/bin/jest.js --coverage"
   },
   "author": "",
   "license": "ISC",
@@ -15,6 +17,13 @@
     "openai": "^3.2.1",
     "queue": "^7.0.0",
     "socket.io": "^4.6.1",
-    "uuid": "^9.0.0"
+    "uuid": "^9.0.0",
+    "sqlite3": "^5.1.6",
+    "sqlite": "^5.0.1"
+  },
+  "devDependencies": {
+    "jest": "^29.7.0",
+    "@jest/globals": "^29.7.0",
+    "supertest": "^6.3.3"
   }
 }
