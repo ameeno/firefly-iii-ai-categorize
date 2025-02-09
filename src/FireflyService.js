@@ -18,6 +18,7 @@ export default class FireflyService {
         const response = await fetch(`${this.#BASE_URL}/api/v1/categories`, {
             headers: {
                 Authorization: `Bearer ${this.#PERSONAL_TOKEN}`,
+                Accept: `application/json`,
             }
         });
 
@@ -68,7 +69,7 @@ export default class FireflyService {
             method: "PUT",
             headers: {
                 Authorization: `Bearer ${this.#PERSONAL_TOKEN}`,
-                "Content-Type": "application/json",
+                Accept: `application/json`,
             },
             body: JSON.stringify(body)
         });
