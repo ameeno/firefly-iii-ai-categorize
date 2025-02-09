@@ -19,6 +19,7 @@ export default class FireflyService {
             headers: {
                 Authorization: `Bearer ${this.#PERSONAL_TOKEN}`,
                 Accept: `application/json`,
+                "Content-Type": "application/json",
             }
         });
 
@@ -70,6 +71,7 @@ export default class FireflyService {
             headers: {
                 Authorization: `Bearer ${this.#PERSONAL_TOKEN}`,
                 Accept: `application/json`,
+                "Content-Type": "application/json",
             },
             body: JSON.stringify(body)
         });
