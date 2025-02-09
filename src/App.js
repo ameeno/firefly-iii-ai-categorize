@@ -1,8 +1,8 @@
 import express from "express";
-import {getConfigVariable} from "./util.js";
+import { getConfigVariable, debug } from "./util.js";
 import FireflyService from "./FireflyService.js";
 import OpenAiService from "./OpenAiService.js";
-import {Server} from "socket.io";
+import { Server } from "socket.io";
 import * as http from "http";
 import Queue from "queue";
 import JobList from "./JobList.js";
@@ -21,13 +21,14 @@ export default class App {
     #queue;
     #jobList;
 
-
     constructor() {
         this.#PORT = getConfigVariable("PORT", '3000');
         this.#ENABLE_UI = getConfigVariable("ENABLE_UI", 'false') === 'true';
+        debug("App constructor: PORT =", this.#PORT, "ENABLE_UI =", this.#ENABLE_UI);
     }
 
     async run() {
+        debug("App.run() starting");
         this.#firefly = new FireflyService();
         this.#openAi = new OpenAiService();
 
@@ -36,45 +37,61 @@ export default class App {
             concurrency: 1,
             autostart: true
         });
+        debug("Queue initialized");
 
-        this.#queue.addEventListener('start', job => console.log('Job started', job))
-        this.#queue.addEventListener('success', event => console.log('Job success', event.job))
-        this.#queue.addEventListener('error', event => console.error('Job error', event.job, event.err, event))
-        this.#queue.addEventListener('timeout', event => console.log('Job timeout', event.job))
+        this.#queue.addEventListener('start', job => debug('Job started', job));
+        this.#queue.addEventListener('success', event => debug('Job success', event.job));
+        this.#queue.addEventListener('error', event => {
+            debug('Job error event:', event);
+            console.error('Job error', event.job, event.err, event);
+        });
+        this.#queue.addEventListener('timeout', event => debug('Job timeout', event.job));
 
         this.#express = express();
-        this.#server = http.createServer(this.#express)
-        this.#io = new Server(this.#server)
+        this.#server = http.createServer(this.#express);
+        this.#io = new Server(this.#server);
+        debug("Express, server and socket.io initialized");
 
         this.#jobList = new JobList();
-        this.#jobList.on('job created', data => this.#io.emit('job created', data));
-        this.#jobList.on('job updated', data => this.#io.emit('job updated', data));
+        this.#jobList.on('job created', data => {
+            debug("Emitting event 'job created'", data);
+            this.#io.emit('job created', data);
+        });
+        this.#jobList.on('job updated', data => {
+            debug("Emitting event 'job updated'", data);
+            this.#io.emit('job updated', data);
+        });
 
         this.#express.use(express.json());
+        debug("Middleware express.json() added");
 
         if (this.#ENABLE_UI) {
-            this.#express.use('/', express.static('public'))
+            this.#express.use('/', express.static('public'));
+            debug("Static UI enabled");
         }
 
-        this.#express.post('/webhook', this.#onWebhook.bind(this))
+        this.#express.post('/webhook', this.#onWebhook.bind(this));
 
         this.#server.listen(this.#PORT, async () => {
             console.log(`Application running on port ${this.#PORT}`);
+            debug("Server listening on port", this.#PORT);
         });
 
         this.#io.on('connection', socket => {
+            debug('New socket.io connection established');
             console.log('connected');
             socket.emit('jobs', Array.from(this.#jobList.getJobs().values()));
-        })
+        });
     }
 
     #onWebhook(req, res) {
         try {
             console.info("Webhook triggered");
+            debug("Webhook request received:", req.body);
             this.#handleWebhook(req, res);
             res.send("Queued");
         } catch (e) {
-            console.error(e)
+            console.error(e);
             res.status(400).send(e.message);
         }
     }
@@ -115,38 +132,49 @@ export default class App {
         }
 
         const destinationName = req.body.content.transactions[0].destination_name;
-        const description = req.body.content.transactions[0].description
+        const description = req.body.content.transactions[0].description;
 
         const job = this.#jobList.createJob({
             destinationName,
             description
         });
+        debug("Job created in webhook:", job);
 
         this.#queue.push(async () => {
-            this.#jobList.setJobInProgress(job.id);
+            try {
+                this.#jobList.setJobInProgress(job.id);
+                debug(`Processing job id ${job.id}`);
 
-            const categories = await this.#firefly.getCategories();
+                const categories = await this.#firefly.getCategories();
+                debug("Categories fetched:", Array.from(categories.entries()));
 
-            const {category, prompt, response} = await this.#openAi.classify(Array.from(categories.keys()), destinationName, description)
+                const { category, prompt, response } = await this.#openAi.classify(
+                    Array.from(categories.keys()),
+                    destinationName,
+                    description
+                );
+                debug("Classification result:", { category, prompt, response });
 
-            const newData = Object.assign({}, job.data);
-            newData.category = category;
-            newData.prompt = prompt;
-            newData.response = response;
+                const newData = { ...job.data, category, prompt, response };
+                this.#jobList.updateJobData(job.id, newData);
+                debug("Job data updated with classification", newData);
 
-            this.#jobList.updateJobData(job.id, newData);
+                if (category) {
+                    await this.#firefly.setCategory(req.body.content.id, req.body.content.transactions, categories.get(category));
+                    debug("Category set in Firefly");
+                }
 
-            if (category) {
-                await this.#firefly.setCategory(req.body.content.id, req.body.content.transactions, categories.get(category));
+                this.#jobList.setJobFinished(job.id);
+                debug(`Job id ${job.id} finished`);
+            } catch (e) {
+                debug("Error processing job id", job.id, e);
+                throw e;
             }
-
-            this.#jobList.setJobFinished(job.id);
         });
     }
 }
 
 class WebhookException extends Error {
-
     constructor(message) {
         super(message);
     }

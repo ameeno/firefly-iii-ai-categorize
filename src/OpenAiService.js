@@ -1,5 +1,5 @@
-import { OpenAI } from "openai";
-import { getConfigVariable } from "./util.js";
+import OpenAI from "openai";
+import { getConfigVariable, debug } from "./util.js";
 
 export default class OpenAiService {
     #openAi;
@@ -12,11 +12,13 @@ export default class OpenAiService {
         this.#openAi = new OpenAI({
             apiKey
         });
+        debug("OpenAiService initialized with model", this.#model);
     }
 
     async classify(categories, destinationName, description) {
         try {
             const prompt = this.#generatePrompt(categories, destinationName, description);
+            debug("Generated prompt:", prompt);
 
             const response = await this.#openAi.chat.completions.create({
                 model: this.#model,
@@ -57,9 +59,16 @@ export default class OpenAiService {
     }
 
     #generatePrompt(categories, destinationName, description) {
-        return `Given I want to categorize transactions on my bank account into these categories: ${categories.join(", ")}
-In which category would a transaction from "${destinationName}" with the subject "${description}" fall into?
-Just output the name of the category. It doesn't need to be a complete sentence.`;
+        const staticPrompt = `I want to categorize transactions on my bank account into the following categories: ${categories.join(", ")}.
+Please provide a consistent categorization. Just output the name of the category.`;
+
+const dynamicPrompt = `
+Transaction details:
+- Destination: "${destinationName}"
+- Description: "${description}"
+`;
+
+        return staticPrompt + dynamicPrompt;
     }
 }
 
@@ -69,7 +78,6 @@ class OpenAiException extends Error {
 
     constructor(statusCode, body) {
         super(`Error while communicating with OpenAI: ${statusCode} - ${body}`);
-
         this.code = statusCode;
         this.body = body;
     }
